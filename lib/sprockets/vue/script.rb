@@ -11,19 +11,18 @@ module Sprockets::Vue
         'coffee' => ->(s, input){
           CoffeeScript.compile(s, sourceMap: true, sourceFiles: [input[:source_path]], no_wrap: true)
         },
-        'es6' => ->(s, input){
-          opts = {
+        'javascript' => ->(s, input){
+          return { 'js' => s } unless defined? Babel::Transpiler
+
+          result = Babel::Transpiler.transform(s, {
             'sourceRoot' => input[:load_path],
             'moduleRoot' => nil,
             'filename' => input[:filename],
             'filenameRelative' => input[:environment].split_subpath(input[:load_path], input[:filename])
-          }
-
-          result = Babel::Transpiler.transform(s, opts)
+          })
 
           { 'js' => result['code'] }
-        },
-        nil => ->(s,input){ { 'js' => s } }
+        }
       }
       def call(input)
         data = input[:data]
@@ -34,8 +33,15 @@ module Sprockets::Vue
           output = []
           map = nil
           if script
-            result = SCRIPT_COMPILES[script[:lang]].call(script[:content], input)
-            
+            lang = script[:lang] || 'javascript'
+            if lang == 'es6' and defined? Babel::Transpiler
+              lang = 'javascript'
+            end
+            unless SCRIPT_COMPILES.key? lang
+              fail "Unsupported Sprockets::Vue script lang attribute #{script[:lang].inspect}"
+            end
+            result = SCRIPT_COMPILES[lang].call(script[:content], input)
+
             map = result['sourceMap']
 
             output << "'object' != typeof VComponents && (this.VComponents = {});
