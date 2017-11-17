@@ -7,6 +7,8 @@ module Sprockets::Vue
     class << self
       include ActionView::Helpers::JavaScriptHelper
 
+      attr_accessor :compiler_context
+
       SCRIPT_REGEX = Utils.node_regex('script')
       TEMPLATE_REGEX = Utils.node_regex('template')
       SCRIPT_COMPILES = {
@@ -78,8 +80,8 @@ module Sprockets::Vue
                   return result;
                 }"
               end
-              context = ExecJS.compile(source)
-              compiled = context.call('compile', template[:content])
+              self.compiler_context ||= ExecJS.compile(source)
+              compiled = self.compiler_context.call('compile', template[:content])
               if compiled['errors'].empty?
                 output << "VComponents['#{j name}'].render = function render() { #{compiled['render']} };"
                 staticRenderFns = compiled['staticRenderFns'].map { |code|
