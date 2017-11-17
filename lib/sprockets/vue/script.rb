@@ -7,7 +7,8 @@ module Sprockets::Vue
     class << self
       include ActionView::Helpers::JavaScriptHelper
 
-      attr_accessor :compiler_context
+      attr_accessor :cached_compiler_path
+      attr_accessor :cached_compiler_context
 
       SCRIPT_REGEX = Utils.node_regex('script')
       TEMPLATE_REGEX = Utils.node_regex('template')
@@ -56,37 +57,35 @@ module Sprockets::Vue
 
           if template
             if compiler_path = Sprockets::Vue.template_compiler_path
-              compiler_uri = input[:environment].resolve!(compiler_path).first
-              source = input[:environment].load(compiler_uri).source
-              if defined? Babel::Transpiler
-                source << ';' << File.read(Babel::Transpiler.script_path)
-                source << ";function compile(template) {
-                  var result = VueTemplateCompiler.compile(template);
-                  delete result['ast'];
-                  if (result.errors && result.errors.length === 0) {
-                    var self = this;
-                    var babelOptions = { ast: false, blacklist: ['useStrict'], loose: ['es6.modules'] };
-                    result.render = babel.transform(result.render, babelOptions).code;
-                    result.staticRenderFns = result.staticRenderFns.map(function(fn) {
-                      return babel.transform(fn, babelOptions).code
-                    })
-                  }
-                  return result;
-                }"
-              else
+              if self.cached_compiler_path != compiler_path
+                self.cached_compiler_path = compiler_path
+                self.cached_compiler_context = nil
+                compiler_uri = input[:environment].resolve!(compiler_path).first
+                source = input[:environment].load(compiler_uri).source
                 source << ";function compile(template) {
                   var result = VueTemplateCompiler.compile(template);
                   delete result['ast'];
                   return result;
                 }"
+                self.cached_compiler_context = ExecJS.compile(source)
               end
-              self.compiler_context ||= ExecJS.compile(source)
-              compiled = self.compiler_context.call('compile', template[:content])
+              compiled = self.cached_compiler_context.call('compile', template[:content])
               if compiled['errors'].empty?
-                output << "VComponents['#{j name}'].render = function render() { #{compiled['render']} };"
-                staticRenderFns = compiled['staticRenderFns'].map { |code|
-                  "function() { #{code} }"
-                }.join(',')
+                if defined? Babel::Transpiler
+                  babel_opt = { 'blacklist' => ['useStrict'], 'loose' => ['es6.modules'] }
+                  result = Babel::Transpiler.transform(compiled['render'], babel_opt)
+                  render = result['code']
+                  staticRenderFns = compiled['staticRenderFns'].map { |code|
+                    result = Babel::Transpiler.transform(code, babel_opt)
+                    "function() { #{result['code']} }"
+                  }.join(',')
+                else
+                  render = compiled['render']
+                  staticRenderFns = compiled['staticRenderFns'].map { |code|
+                    "function() { #{code} }"
+                  }.join(',')
+                end
+                output << "VComponents['#{j name}'].render = function render() { #{render} };"
                 output << "VComponents['#{j name}'].staticRenderFns = [#{staticRenderFns}];"
               else
                 error = String.new
@@ -98,6 +97,8 @@ module Sprockets::Vue
                 raise CompileError, error
               end
             else
+              self.cached_compiler_path = nil
+              self.cached_compiler_context = nil
               output << "VComponents['#{j name}'].template = '#{j template[:content]}';"
             end
           end
