@@ -4,6 +4,10 @@ require 'sprockets/vue/utils'
 require 'sprockets/vue/script'
 require 'sprockets/vue/style'
 module Sprockets
+  module Vue
+    mattr_accessor :template_compiler_path
+  end
+
   if respond_to?(:register_transformer)
     register_mime_type 'text/vue', extensions: ['.vue'], charset: :unicode
     register_transformer 'text/vue', 'application/javascript', Vue::Script
