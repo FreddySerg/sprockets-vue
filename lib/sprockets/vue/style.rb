@@ -3,8 +3,8 @@ module Sprockets::Vue
     class << self
       STYLE_REGEX = Utils.node_regex('style')
       STYLE_COMPILES = {
-        'scss' => Sprockets::ScssProcessor,
-        'sass' => Sprockets::SassProcessor,
+        'scss' => Sprockets::ScsscProcessor,
+        'sass' => Sprockets::SasscProcessor,
         nil => ->(i){i[:data]}
       }
       def call(input)
